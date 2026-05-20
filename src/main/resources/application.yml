@@ -1,0 +1,8 @@
+server:
+  port: 8082
+
+twilio:
+    account-sid: ${TWILIO_ACCOUNT_SID}
+    auth-token: ${TWILIO_AUTH_TOKEN}
+    from-phone-number: ${TWILIO_FROM_PHONE_NUMBER}
+    whatsapp-phone-number: ${TWILIO_WHATSAPP_FROM_PHONE_NUMBER}
