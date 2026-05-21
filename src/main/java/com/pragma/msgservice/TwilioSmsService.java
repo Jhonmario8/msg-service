@@ -21,7 +21,7 @@ public class TwilioSmsService {
 
     @Value("${twilio.from-phone-number}")
     private String fromNumber;
-    
+
     @Value("${twilio.whatsapp-phone-number}")
     private String whatsappNumber;
 
