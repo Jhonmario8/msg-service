@@ -13,7 +13,7 @@ Forma parte del repositorio [Reto-Pragma](https://github.com/Jhonmario8/Reto-Pra
 - [Variables de entorno](#variables-de-entorno)
 - [Ejecución en local](#ejecución-en-local)
 - [Tests](#tests)
-- [Limitaciones conocidas](#limitaciones-conocidas)
+- [Deuda técnica conocida](#deuda-técnica-conocida)
 
 ## Tecnologías
 
@@ -115,7 +115,9 @@ Los tests unitarios no envían SMS reales ni hacen peticiones a Twilio, y no nec
 
 `TwilioSmsService` llama al SDK con métodos estáticos (`Message.creator(...)`) y no recibe un cliente inyectable. Por eso el test usa `Mockito.mockStatic(Message.class)`, que viene con el mock maker inline de `spring-boot-starter-test` y no requiere dependencias extra. El servicio se instancia con `new`, así que `Twilio.init` no se ejecuta.
 
-## Limitaciones conocidas
+## Deuda técnica conocida
+
+Hallazgos de las rondas de tests que todavía no se han corregido:
 
 - Sin credenciales de Twilio la aplicación no arranca.
 - Los errores de Twilio llegan al cliente como un 500 genérico.
