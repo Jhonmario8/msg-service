@@ -1,133 +1,125 @@
 # Msg Service
 
-Microservicio para el envío de mensajes SMS y WhatsApp utilizando Twilio como proveedor, desarrollado en Java 17 y Spring Boot 3. Proporciona una API REST sencilla para integrarse con otros componentes de una plataforma o ser usado standalone.
+Microservicio de mensajería del proyecto Reto Pragma (plazoleta de comidas). Expone un endpoint REST que recibe un número de destino y un texto, y los envía como SMS o como mensaje de WhatsApp usando el SDK de Twilio para Java. `plazoleta-service` lo llama por OpenFeign de forma síncrona cuando un pedido pasa a listo, se entrega o se cancela.
 
----
+Forma parte del repositorio [Reto-Pragma](https://github.com/Jhonmario8/Reto-Pragma).
 
-## Tabla de Contenidos
+## Tabla de contenidos
 
-- [Descripción](#descripción)
 - [Tecnologías](#tecnologías)
-- [Estructura del proyecto](#estructura-del-proyecto)
+- [Estructura](#estructura)
+- [Endpoint](#endpoint)
+- [Requisitos: cuenta de Twilio](#requisitos-cuenta-de-twilio)
 - [Variables de entorno](#variables-de-entorno)
-- [Configuración inicial](#configuración-inicial)
-- [Uso de la API](#uso-de-la-api)
-- [Testing](#testing)
-- [Contribuciones](#contribuciones)
-
----
-
-## Descripción
-
-Este microservicio expone un endpoint `/sms/send` para el envío de mensajes SMS tradicionales o vía WhatsApp, centralizando la lógica de validación y despacho sobre la plataforma Twilio. Puede ser integrado en arquitecturas de microservicios para notificaciones, autenticación por SMS, alertas, etc.
-
----
+- [Ejecución en local](#ejecución-en-local)
+- [Tests](#tests)
+- [Deuda técnica conocida](#deuda-técnica-conocida)
 
 ## Tecnologías
 
-- **Java 17**
-- **Spring Boot 3** (`spring-boot-starter-web`, `spring-boot-starter-validation`)
-- **Lombok** (para reducir boilerplate)
-- **Twilio SDK Java**
-- **Gradle 9.4.1** (wrapper incluido)
-- **JUnit 5 y Spring Boot Test**
+- Java 17, Spring Boot 3.3.5 (Web, Validation)
+- SDK de Twilio para Java 8.31.1
+- Lombok
+- Gradle 9.4.1 (wrapper incluido)
+- JUnit 5, Mockito y AssertJ
 
----
+No tiene base de datos ni Spring Security.
 
-## Estructura del proyecto
+## Estructura
+
+A diferencia de los otros servicios, no sigue la arquitectura hexagonal: son cuatro clases en un solo paquete.
 
 ```
-src/
- ├─ main/
- │   ├─ java/com/pragma/msgservice/
- │   │   ├─ Constants.java            # Mensajes de validación y éxito
- │   │   ├─ SmsController.java        # Controlador REST principal
- │   │   ├─ SmsRequest.java           # DTO de entrada para solicitudes de SMS
- │   │   └─ TwilioSmsService.java     # Lógica para el uso de API de Twilio
- │   └─ resources/
- │       └─ application.yml           # Configuración de Twilio y server
- └─ test/
-     └─ java/com/pragma/msgservice/
-         └─ MsgServiceApplicationTests.java # Prueba básica de contexto
+src/main/java/com/pragma/msgservice/
+  SmsController.java      POST /sms/send
+  SmsRequest.java         DTO con destinationPhoneNumber y message (@NotBlank)
+  TwilioSmsService.java   Inicializa Twilio y envía el mensaje con Message.creator(...).create()
+  Constants.java          Mensajes de validación y de éxito
 ```
 
----
-
-## Variables de entorno
-
-Para un funcionamiento seguro, las credenciales de Twilio deben configurarse vía variables de entorno, referenciadas en `src/main/resources/application.yml`:
-
-- `TWILIO_ACCOUNT_SID` — SID de cuenta Twilio.
-- `TWILIO_AUTH_TOKEN` — Token de autenticación Twilio.
-- `TWILIO_FROM_PHONE_NUMBER` — Número telefónico registrado en Twilio para enviar SMS.
-- `TWILIO_WHATSAPP_FROM_PHONE_NUMBER` — Número configurado en Twilio para WhatsApp (formato: `whatsapp:+...`).
-
-Opcional: cambia el puerto en `application.yml` si lo requieres (por defecto 8082).
-
----
-
-## Configuración inicial
-
-1. Clona este repo:
-    ```sh
-    git clone https://github.com/Jhonmario8/msg-service.git
-    cd msg-service
-    ```
-2. Prepara el entorno Java 17/Gradle y exporta las variables de entorno de Twilio según corresponda.
-3. Ejecuta el servicio:
-    ```sh
-    ./gradlew bootRun
-    ```
-   El microservicio quedará disponible en: http://localhost:8082
-
----
-
-## Uso de la API
-
-### Endpoint principal
+## Endpoint
 
 `POST /sms/send`
 
-#### Request Body
-
 ```json
 {
-  "destinationPhoneNumber": "+573001112233",
-  "message": "Tu código de verificación es 123456"
+  "destinationPhoneNumber": "whatsapp:+573001234567",
+  "message": "Your order is ready for pickup!4821"
 }
 ```
 
-- Para WhatsApp, el número debe ir así: `"destinationPhoneNumber": "whatsapp:+573001112233"`
+- Si `destinationPhoneNumber` contiene `whatsapp:`, el mensaje sale desde `TWILIO_WHATSAPP_FROM_PHONE_NUMBER`. En cualquier otro caso sale como SMS desde `TWILIO_FROM_PHONE_NUMBER`.
+- `plazoleta-service` siempre envía el destino como `whatsapp:+57<teléfono>`.
 
-#### Respuesta exitosa
+Respuestas:
 
-```json
-"SMS sent successfully."
+| Código | Cuándo |
+|---|---|
+| 200 | Twilio aceptó el mensaje. Cuerpo: `SMS sent successfully.` |
+| 400 | Falta el número o el mensaje. |
+| 500 | Twilio devolvió un error. El servicio lo envuelve en `RuntimeException("Failed to send SMS: ...")` y no hay un manejador de errores propio. |
+
+## Requisitos: cuenta de Twilio
+
+Para enviar mensajes reales se necesita una cuenta de Twilio. Sirve una cuenta de prueba (trial), con estas restricciones de Twilio:
+
+- Solo se puede enviar a números verificados en la consola de Twilio.
+- Los mensajes llevan un prefijo de cuenta de prueba.
+- Para WhatsApp hay que usar el sandbox de Twilio y unir el número de destino al sandbox antes de enviarle mensajes.
+
+## Variables de entorno
+
+Referenciadas en `src/main/resources/application.yml`. Las cuatro son obligatorias para arrancar, porque `Twilio.init` se ejecuta en `@PostConstruct` y Spring no resuelve los placeholders vacíos.
+
+| Variable | Descripción |
+|---|---|
+| `TWILIO_ACCOUNT_SID` | Account SID de la consola de Twilio. |
+| `TWILIO_AUTH_TOKEN` | Auth Token de la consola de Twilio. |
+| `TWILIO_FROM_PHONE_NUMBER` | Número de Twilio para SMS, formato E.164 (`+1...`). |
+| `TWILIO_WHATSAPP_FROM_PHONE_NUMBER` | Número de WhatsApp del sandbox, con prefijo (`whatsapp:+1...`). |
+
+El puerto es `8082` (`server.port`).
+
+## Ejecución en local
+
+```bash
+export TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+export TWILIO_AUTH_TOKEN=<auth_token>
+export TWILIO_FROM_PHONE_NUMBER=+15550000000
+export TWILIO_WHATSAPP_FROM_PHONE_NUMBER=whatsapp:+14155238886
+
+./gradlew bootRun
 ```
 
-- Status HTTP: **200 OK**
+Prueba manual:
 
-#### Posibles errores
+```bash
+curl -X POST http://localhost:8082/sms/send \
+  -H "Content-Type: application/json" \
+  -d '{"destinationPhoneNumber":"+573001234567","message":"Prueba"}'
+```
 
-- 400 Bad Request (cuando falta número/mensaje)
-- 500 Internal Server Error (si Twilio falla)
+## Tests
 
----
-
-## Testing
-
-Para correr todos los tests:
-
-```sh
+```bash
 ./gradlew test
 ```
 
----
+Los tests unitarios no envían SMS reales ni hacen peticiones a Twilio, y no necesitan credenciales:
 
-## Contribuciones
+| Clase | Qué cubre |
+|---|---|
+| `SmsControllerTest` | El controlador delega en `TwilioSmsService` (mockeado) y responde 200; si el servicio falla, propaga la excepción. |
+| `TwilioSmsServiceTest` | Número de origen SMS vs WhatsApp, texto enviado y conversión de `ApiException` de Twilio en `RuntimeException`. |
+| `SmsRequestValidationTest` | Mensajes de validación cuando falta el número o el texto. |
 
-Las contribuciones son bienvenidas. Por favor, abre un issue o haz un fork y PR siguiendo las prácticas estándar de la comunidad.
+`TwilioSmsService` llama al SDK con métodos estáticos (`Message.creator(...)`) y no recibe un cliente inyectable. Por eso el test usa `Mockito.mockStatic(Message.class)`, que viene con el mock maker inline de `spring-boot-starter-test` y no requiere dependencias extra. El servicio se instancia con `new`, así que `Twilio.init` no se ejecuta.
 
----
+## Deuda técnica conocida
 
-> Servicio desarrollado por [Jhonmario8](https://github.com/Jhonmario8) como pieza de mensajería versátil y desacoplada para microservicios.
+Hallazgos de las rondas de tests que todavía no se han corregido:
+
+- Sin credenciales de Twilio la aplicación no arranca.
+- Los errores de Twilio llegan al cliente como un 500 genérico.
+- El endpoint no requiere autenticación.
+- El acoplamiento directo con las clases estáticas de Twilio complica los tests. Una interfaz propia (por ejemplo, un `SmsSender`) permitiría mockear el envío con `@Mock`.
